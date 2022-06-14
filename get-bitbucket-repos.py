@@ -1,7 +1,9 @@
 """
 This script will get the list of repos in BitBucket Project.
-Set you Bitbucket PAT as environment variable BB_TOKEN. 
-Pass the Bitbucket Project name as argument to the script. 
+
+Set you Bitbucket PAT as environment variable BB_TOKEN.
+
+Pass the Bitbucket Project name as argument to the script.
 """
 import requests
 import json
@@ -11,6 +13,7 @@ import logging
 
 
 def main():
+    """Write the SSH Clone URL's for the repos found in the Project."""
     bb_url = 'https://foxrepo.praecipio.com'
     bb_project_key = sys.argv[1]
     bb_token = os.getenv('BB_TOKEN')
@@ -19,7 +22,7 @@ def main():
     if bb_token is None:
         logging.error('BB_TOKEN environment variable not found')
         sys.exit(-1)
-  
+
     repo_list_url = f'{bb_url}/rest/api/1.0/projects/{bb_project_key}/repos?limit=1000'
 
     headers = {
@@ -32,14 +35,22 @@ def main():
     if response.status_code != 200:
         raise SystemError('Get Request for repos failed..')
 
-    output = json.loads(response.text)
-    print(f'Getting the list of repos in {bb_project_key} project, limit is {output["limit"]}')
-    print(f'Number of repos found in {bb_project_key} project are {output["size"]}')
-    print("Writing the repos to file bitbucket_repos.txt")
-    
-    with open("bitbucket_repos.txt",'w') as repos:
-        for i in output["values"]:
-            repos.write(f'{i["name"]}\n')
+    repo_urls = []
+    repos_json = json.loads(response.text)
+    for repo in repos_json.get('values', []):
+        for clone in repo['links']['clone']:
+            if clone['name'] == 'ssh':
+                url = clone['href']
+                repo_urls.append(url)
+
+    print(f'Getting the list of repos, limit {repos_json["limit"]}')
+    print(f'Repos found in {bb_project_key} {repos_json["size"]}')
+    print("Writing the ssh clone URL's to file bitbucket_repos.txt")
+
+    with open("bitbucket_repos.txt",'w') as repo_ssh_clone_urls:
+        for url in repo_urls:
+            repo_ssh_clone_urls.write("%s\n" % url)
+
 
 if __name__ == '__main__':
     main()
