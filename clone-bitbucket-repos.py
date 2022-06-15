@@ -33,8 +33,6 @@ def main():
         '--repo_list', help='Path of the text file withBB repos to be migrated to GH')
     parser.add_argument(
         '--dest', help='Destination directory to mirror repos')
-    parser.add_argument(
-        '--clone_prefix', help='clone prefix url for the BB project')
 
     args = parser.parse_args()
 
@@ -54,7 +52,7 @@ def main():
     with open(args.repo_list) as file:
         while (repo := file.readline().rstrip()):
             threads.append(threading.Thread(
-                target=process_repo, args=(repo, args.clone_prefix,)))
+                target=process_repo, args=(repo,)))
 
         for t in threads:
             t.daemon = True  # helps to cancel cleanly
@@ -63,7 +61,8 @@ def main():
             t.join(timeout=120)
 
 
-def process_repo(repo_name, clone_prefix):
+def process_repo(ssh_clone_url):
+    repo_name = ssh_clone_url[6:-4].split('/')[-1]
     logfile = os.path.join(LOGGING_DIR, repo_name)
     duration = 5
     tries = 0
@@ -74,12 +73,13 @@ def process_repo(repo_name, clone_prefix):
             if os.path.isdir(repo_name):
                 done = update_repo(repo_name)
             else:  # otherwise clone into the directory
-                done = mirror_repo(repo_name, clone_prefix)
+                done = mirror_repo(ssh_clone_url, repo_name)
             if done:
                 break
             # backoff and try again
             tries += 1
-            logging.info(f'{repo_name} backing off {duration}s try {tries}...')
+            logging.info(
+                f'{repo_name} backing off {duration}s try {tries}...')
             time.sleep(duration)
             duration += (duration * 0.3)
     if not done:
@@ -112,12 +112,14 @@ def update_repo(repo_name):
     return True
 
 
-def mirror_repo(repo_name, clone_prefix):
+def mirror_repo(ssh_clone_url, repo_name):
+    print(f'ssh_clone_url is {ssh_clone_url}   and repo_name is {repo_name}')
     logfile = os.path.join(LOGGING_DIR, repo_name)
+
     logging.info(f'Cloning {repo_name}')
     with open(logfile, 'w') as f:
         try:
-            subprocess.run(f'git clone --mirror {clone_prefix}/{repo_name}.git',
+            subprocess.run(f'git clone --mirror {ssh_clone_url}',
                            shell=True,
                            stdin=DEV_NULL,
                            stdout=f,
