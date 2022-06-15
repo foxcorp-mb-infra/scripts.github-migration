@@ -1,8 +1,8 @@
 """
-This script mirror (i.e. (clone repo with entire history) all of the Bitbucket repos mentioned in the given text file 
+This script mirror (i.e. clone repo with entire history) all of the Bitbucket repos mentioned in the given text file 
 and mirror them in the destination directory.
 
-It requires a bearer token in environment variable BB_TOKEN.
+It requires a bearer token in environment variable : BB_TOKEN.
 """
 
 import argparse
@@ -12,6 +12,9 @@ import logging
 import threading
 import subprocess
 import time
+import shutil
+from subprocess import DEVNULL
+
 
 LOG_LEVEL = logging.INFO
 DEFAULT_NUM_THREADS = 4
@@ -19,10 +22,6 @@ LOGGING_DIR = '.mirror-project'
 PROCESS_TIMEOUT = 300  # default process timeout
 
 concurrency_sem = threading.Semaphore(DEFAULT_NUM_THREADS)
-if sys.platform.startswith('win32'):
-    DEV_NULL = open('nul', 'r')
-else:
-    DEV_NULL = open('/dev/null', 'r')
 
 
 def main():
@@ -30,7 +29,7 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        '--repo_list', help='Path of the text file withBB repos to be migrated to GH')
+        '--repo-list', help='Path of the text file which shall contain complete ssh clone url of each BB repos to be migrated to GH, format of the file shall be one repo clone url per line')
     parser.add_argument(
         '--dest', help='Destination directory to mirror repos')
 
@@ -43,6 +42,10 @@ def main():
         sys.exit(-1)
 
     os.chdir(args.dest)
+
+    # recreate logging dir for every run
+    if os.path.isdir(LOGGING_DIR):
+        shutil.rmtree(LOGGING_DIR)
 
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
@@ -58,7 +61,7 @@ def main():
             t.daemon = True  # helps to cancel cleanly
             t.start()
         for t in threads:
-            t.join(timeout=120)
+            t.join(timeout=PROCESS_TIMEOUT)
 
 
 def process_repo(ssh_clone_url):
@@ -78,61 +81,60 @@ def process_repo(ssh_clone_url):
                 break
             # backoff and try again
             tries += 1
-            logging.info(
-                f'{repo_name} backing off {duration}s try {tries}...')
+            logging.info('%s backing off %ds try %d',
+                         repo_name, duration, tries)
+
             time.sleep(duration)
             duration += (duration * 0.3)
     if not done:
-        msg = f"Error processing {repo_name}, giving up.  See {logfile} for details."
-        logging.error(msg)
+        logging.error(
+            'Error processing %s, giving up.  See %s for details.', repo_name, logfile)
     return
 
 
 def update_repo(repo_name):
     logfile = os.path.join(LOGGING_DIR, repo_name)
-    logging.info(f'Updating {repo_name}')
+    logging.info('Updating %s', repo_name)
     with open(logfile, 'w') as f:
         try:
             subprocess.run('git remote update',
                            cwd=repo_name,
                            shell=True,
-                           stdin=DEV_NULL,
+                           stdin=DEVNULL,
                            stdout=f,
                            stderr=subprocess.STDOUT,
                            check=True,
                            timeout=PROCESS_TIMEOUT)
         except subprocess.CalledProcessError:
-            msg = f"Error updating {repo_name}, see {logfile} for details"
-            logging.error(msg)
+            logging.error(
+                'Error updating %s, see %s for details', repo_name, logfile)
             return False
         except subprocess.TimeoutExpired:
-            msg = f"Timeout updating {repo_name}, see {logfile} for details"
-            logging.error(msg)
+            logging.error(
+                'Timeout updating %s, see %s for details', repo_name, logfile)
             return False
     return True
 
 
 def mirror_repo(ssh_clone_url, repo_name):
-    print(f'ssh_clone_url is {ssh_clone_url}   and repo_name is {repo_name}')
     logfile = os.path.join(LOGGING_DIR, repo_name)
-
-    logging.info(f'Cloning {repo_name}')
+    logging.info('Cloning %s', repo_name)
     with open(logfile, 'w') as f:
         try:
             subprocess.run(f'git clone --mirror {ssh_clone_url}',
                            shell=True,
-                           stdin=DEV_NULL,
+                           stdin=DEVNULL,
                            stdout=f,
                            stderr=subprocess.STDOUT,
                            check=True,
                            timeout=PROCESS_TIMEOUT)
         except subprocess.CalledProcessError:
-            msg = f"Error cloning {repo_name}, see {logfile} for details"
-            logging.error(msg)
+            logging.error(
+                'Error cloning %s, see %s for details', repo_name, logfile)
             return False
         except subprocess.TimeoutExpired:
-            msg = f"Timeout updating {repo_name}, see {logfile} for details"
-            logging.error(msg)
+            logging.error(
+                'Timeout updating %s, see %s for details', repo_name, logfile)
             return False
     return True
 
