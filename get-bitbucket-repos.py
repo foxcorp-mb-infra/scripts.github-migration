@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 This script will get the list of repos in BitBucket Project.
 
@@ -17,7 +18,7 @@ def main():
     """Write the SSH Clone URL's for the repos found in the Project."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--project_key', help='Bitbucket Project Key')
+        '--project-key', help='Bitbucket Project Key')
     args = parser.parse_args()
     bb_project_key = args.project_key
 
