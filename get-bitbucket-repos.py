@@ -10,12 +10,18 @@ import json
 import sys
 import os
 import logging
+import argparse
 
 
 def main():
     """Write the SSH Clone URL's for the repos found in the Project."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--project_key', help='Bitbucket Project Key')
+    args = parser.parse_args()
+    bb_project_key = args.project_key
+
     bb_url = 'https://foxrepo.praecipio.com'
-    bb_project_key = sys.argv[1]
     bb_token = os.getenv('BB_TOKEN')
     print(f"Bit bucket project key provided is '{bb_project_key}'")
 
@@ -47,7 +53,7 @@ def main():
     print(f'Repos found in {bb_project_key} {repos_json["size"]}')
     print("Writing the ssh clone URL's to file bitbucket_repos.txt")
 
-    with open("bitbucket_repos.txt",'w') as repo_ssh_clone_urls:
+    with open("bitbucket_repos.txt", 'w') as repo_ssh_clone_urls:
         for url in repo_urls:
             repo_ssh_clone_urls.write("%s\n" % url)
 
