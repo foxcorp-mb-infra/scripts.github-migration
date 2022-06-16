@@ -1,7 +1,6 @@
 """
 This script mirror (i.e. clone repo with entire history) all of the Bitbucket repos mentioned in the given text file 
 and mirror them in the destination directory.
-
 It requires a bearer token in environment variable : BB_TOKEN.
 """
 

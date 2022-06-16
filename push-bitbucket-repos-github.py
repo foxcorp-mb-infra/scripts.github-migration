@@ -1,6 +1,7 @@
 """
 This script will push Bitbucket mirrored repos from source folder to github
 It requires a bearer token in environment variable GITHUB_TOKEN.
+User running this script be have Owner access to the GitHub Organization
 """
 
 import argparse
