@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 This script will push Bitbucket mirrored repos from source folder to github
 It requires a bearer token in environment variable GITHUB_TOKEN.

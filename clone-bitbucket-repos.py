@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 This script mirror (i.e. clone repo with entire history) all of the Bitbucket repos mentioned in the given text file 
 and mirror them in the destination directory.

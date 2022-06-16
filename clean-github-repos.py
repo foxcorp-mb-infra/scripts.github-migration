@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 This script deletes GH repos in the gitHub organization mentioned in the argument. 
 It will clean all the repos in the mirrored-repos-path directory

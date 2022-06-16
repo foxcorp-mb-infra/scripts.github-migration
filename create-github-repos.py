@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 This script creates empty GH repos in the gitHub organization mentioned in the argument. 
 It requires a bearer token in environment variable GITHUB_TOKEN.
