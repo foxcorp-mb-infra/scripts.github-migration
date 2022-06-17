@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
 """
-This script creates empty GH repos in the gitHub organization mentioned in the argument. 
+This script creates empty GH repos in the gitHub organization mentioned in the argument.
 It requires a bearer token in environment variable GITHUB_TOKEN.
 User running this script be have Owner access to the GitHub Organization
 """
 
 import argparse
-from lib2to3.pgen2 import token
 import os
 import sys
 import logging
-import requests
 import json
 import shutil
 
+import requests
 
 LOG_LEVEL = logging.INFO
 LOGGING_DIR = '.create-repos-github'
 
 
 def main():
+    """ CLI entry point for create-github-repos"""
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--org-name', help='Name of the Github Organization')
-    parser.add_argument(
-        '--mirrored-repos-path', help='Path of the mirrored repo')
+    parser.add_argument('--org-name', help='Name of the Github Organization')
+    parser.add_argument('--mirrored-repos-path', help='Path of the mirrored repo')
 
     args = parser.parse_args()
 
@@ -47,19 +45,17 @@ def main():
 
     allrepos = os.listdir(args.mirrored_repos_path)
     for repo in allrepos:
-        if not repo.startswith("."):
-            repo_name = repo[:-4]
-            create_github_repository(repo_name, args.org_name, github_token)
+        if repo.startswith("."):
+            continue
+        repo_name = repo[:-4]
+        create_github_repository(repo_name, args.org_name, github_token)
 
 
 def create_github_repository(repo_name, org_name, github_token):
+    """ use the Github API to create a new repository in the organization """
 
     url = f'https://api.github.com/orgs/{org_name}/repos'
-
-    headers_json = {
-        "Accept": "application/vnd.github.v3+json",
-        "Authorization": "token {token}".format(token=github_token)
-    }
+    headers_json = {"Accept": "application/vnd.github.v3+json", "Authorization": f"token {github_token}"}
 
     payload = {
         "name": f"{repo_name}",
@@ -71,12 +67,15 @@ def create_github_repository(repo_name, org_name, github_token):
         "has_wiki": True,
     }
 
-    response = requests.post(url, headers=headers_json,
-                             data=json.dumps(payload))
+    response = requests.post(url, headers=headers_json, data=json.dumps(payload))
 
     if response.status_code != 201:
         logging.error(
-            'Failed to create repository %s . status_code: %d . response_text: %s', repo_name, response.status_code, response.text)
+            'Failed to create repository %s . status_code: %d . response_text: %s',
+            repo_name,
+            response.status_code,
+            response.text,
+        )
         raise SystemExit()
     else:
         logging.info('Repository %s created successfully', repo_name)

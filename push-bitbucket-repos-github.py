@@ -13,8 +13,8 @@ import logging
 import time
 import subprocess
 import shutil
-from subprocess import DEVNULL
 
+from subprocess import DEVNULL
 
 LOG_LEVEL = logging.INFO
 DEFAULT_NUM_THREADS = 4
@@ -26,13 +26,14 @@ concurrency_sem = threading.Semaphore(DEFAULT_NUM_THREADS)
 
 
 def main():
+    """ The main entry point for the script. Required args for Github organization
+        name and the local path to the mirrored repositories to push
+    """
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--org-name', help='Name of the Github Organization')
-    parser.add_argument(
-        '--mirrored-repos-path', help='Path of the mirrored repo')
+    parser.add_argument('--org-name', help='Name of the Github Organization')
+    parser.add_argument('--mirrored-repos-path', help='Path of the mirrored repo')
 
     args = parser.parse_args()
 
@@ -56,18 +57,23 @@ def main():
 
     allrepos = os.listdir(args.mirrored_repos_path)
     for repo in allrepos:
-        if not repo.startswith("."):
-            threads.append(threading.Thread(target=process_repo, args=(
-                repo, args.mirrored_repos_path, args.org_name)))
+        if repo.startswith("."):
+            continue
+        worker = threading.Thread(
+            target=process_repo,
+            args=(repo, args.mirrored_repos_path, args.org_name),
+        )
+        threads.append(worker)
 
-    for t in threads:
-        t.daemon = True  # helps to cancel cleanly
-        t.start()
-    for t in threads:
-        t.join(timeout=PROCESS_TIMEOUT)
+    for worker in threads:
+        worker.daemon = True  # helps to cancel cleanly
+        worker.start()
+    for worker in threads:
+        worker.join(timeout=PROCESS_TIMEOUT)
 
 
 def process_repo(repo, mirrored_repos_path, org_name):
+    """ The main work process will attempt to push to Github and retry on failure """
     repo_name = repo[:-4]
     logfile = os.path.join(LOGGING_DIR, repo_name)
     duration = 5
@@ -79,39 +85,41 @@ def process_repo(repo, mirrored_repos_path, org_name):
             if done:
                 break
             tries += 1
-            logging.info(
-                '%s backing off %ds try %d...', repo_name, duration, tries)
+            logging.info('%s backing off %ds try %d...', repo_name, duration, tries)
             time.sleep(duration)
             duration += (duration * 0.3)
     if not done:
-        logging.error(
-            'Error processing %s, giving up.  See %s for details.', repo_name, logfile)
+        logging.error('Error processing %s, giving up.  See %s for details.', repo_name, logfile)
 
     return
 
 
 def push_repo_github(repo, mirrored_repos_path, org_name):
+    """ Using the git command from the CLI set the remote, push to origin, and push --mirror """
     repo_name = repo[:-4]
     logfile = os.path.join(LOGGING_DIR, repo_name)
-    logging.info(
-        'pushing %s to Github organization: %s', repo_name, org_name)
+    logging.info('pushing %s to Github organization: %s', repo_name, org_name)
 
-    with open(logfile, 'w') as f:
+    git_ref = f"{DEFAULT_GH_URL}/{org_name}/{repo}"
+    working_dir = os.path.join(mirrored_repos_path, repo)
+    with open(logfile, 'w', encoding='UTF-8') as log_file_handle:
         try:
-            subprocess.run(os.system(f'cd {os.path.join(mirrored_repos_path,repo)} && git remote set-url --push origin {DEFAULT_GH_URL}/{org_name}/{repo} && git push --mirror'),
-                           shell=True,
-                           stdin=DEVNULL,
-                           stdout=f,
-                           stderr=subprocess.STDOUT,
-                           check=True,
-                           timeout=PROCESS_TIMEOUT)
-        except subprocess.CalledProcessError:
-            logging.error(
-                'Error cloning %s, see %s for details', repo_name, logfile)
+            subprocess.run(
+                f'git remote set-url --push origin {git_ref} && git push --mirror',
+                cwd=working_dir,
+                shell=True,
+                stdin=DEVNULL,
+                stdout=log_file_handle,
+                stderr=subprocess.STDOUT,
+                check=True,
+                timeout=PROCESS_TIMEOUT,
+            )
+        except subprocess.CalledProcessError as cpe:
+            logging.exception(cpe)  # log the exception but don't stop the other threads
+            logging.error('Error cloning %s, see %s for details', repo_name, logfile)
             return False
         except subprocess.TimeoutExpired:
-            logging.error(
-                'Timeout updating {repo_name}, see {logfile} for details', repo_name, logfile)
+            logging.error('Timeout updating %s, see %s for details', repo_name, logfile)
             return False
     return True
 

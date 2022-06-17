@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-This script mirror (i.e. clone repo with entire history) all of the Bitbucket repos mentioned in the given text file 
+This script mirror (i.e. clone repo with entire history) all of the Bitbucket repos mentioned in the given text file
 and mirror them in the destination directory.
 It requires a bearer token in environment variable : BB_TOKEN.
 """
@@ -13,8 +13,8 @@ import threading
 import subprocess
 import time
 import shutil
-from subprocess import DEVNULL
 
+from subprocess import DEVNULL
 
 LOG_LEVEL = logging.INFO
 DEFAULT_NUM_THREADS = 4
@@ -25,13 +25,16 @@ concurrency_sem = threading.Semaphore(DEFAULT_NUM_THREADS)
 
 
 def main():
+    """ CLI entry point into clone-bitbucket_repos """
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        '--repo-list', help='Path of the text file which shall contain complete ssh clone url of each BB repos to be migrated to GH, format of the file shall be one repo clone url per line')
-    parser.add_argument(
-        '--dest', help='Destination directory to mirror repos')
+        '--repo-list',
+        help='Path of the text file which shall contain complete ssh clone url of each '
+        'Bitbucket repos to be migrated to Github, format of the file shall be one repo clone url per line',
+    )
+    parser.add_argument('--dest', help='Destination directory to mirror repos')
 
     args = parser.parse_args()
 
@@ -50,21 +53,21 @@ def main():
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
 
-# start a thread per repo
+    # start a thread per repo
     threads = []
-    with open(args.repo_list) as file:
-        while (repo := file.readline().rstrip()):
-            threads.append(threading.Thread(
-                target=process_repo, args=(repo,)))
+    with open(args.repo_list, encoding="UTF-8") as repo_list_file_handle:
+        while (repo := repo_list_file_handle.readline().rstrip()):
+            threads.append(threading.Thread(target=process_repo, args=(repo, )))
 
-        for t in threads:
-            t.daemon = True  # helps to cancel cleanly
-            t.start()
-        for t in threads:
-            t.join(timeout=PROCESS_TIMEOUT)
+        for worker in threads:
+            worker.daemon = True  # helps to cancel cleanly
+            worker.start()
+        for worker in threads:
+            worker.join(timeout=PROCESS_TIMEOUT)
 
 
 def process_repo(ssh_clone_url):
+    """ The main worker logic to exec the update and mirror logic and retry on error """
     repo_name = ssh_clone_url[6:-4].split('/')[-1]
     logfile = os.path.join(LOGGING_DIR, repo_name)
     duration = 5
@@ -81,60 +84,58 @@ def process_repo(ssh_clone_url):
                 break
             # backoff and try again
             tries += 1
-            logging.info('%s backing off %ds try %d',
-                         repo_name, duration, tries)
+            logging.info('%s backing off %ds try %d', repo_name, duration, tries)
 
             time.sleep(duration)
             duration += (duration * 0.3)
     if not done:
-        logging.error(
-            'Error processing %s, giving up.  See %s for details.', repo_name, logfile)
+        logging.error('Error processing %s, giving up.  See %s for details.', repo_name, logfile)
     return
 
 
 def update_repo(repo_name):
+    """ Using git from the CLI do a remote update """
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('Updating %s', repo_name)
-    with open(logfile, 'w') as f:
+    with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
             subprocess.run('git remote update',
                            cwd=repo_name,
                            shell=True,
                            stdin=DEVNULL,
-                           stdout=f,
+                           stdout=log_file_handle,
                            stderr=subprocess.STDOUT,
                            check=True,
                            timeout=PROCESS_TIMEOUT)
-        except subprocess.CalledProcessError:
-            logging.error(
-                'Error updating %s, see %s for details', repo_name, logfile)
+        except subprocess.CalledProcessError as cpe:
+            logging.exception(cpe)  # log the exception but don't block other threads
+            logging.error('Error updating %s, see %s for details', repo_name, logfile)
             return False
         except subprocess.TimeoutExpired:
-            logging.error(
-                'Timeout updating %s, see %s for details', repo_name, logfile)
+            logging.error('Timeout updating %s, see %s for details', repo_name, logfile)
             return False
     return True
 
 
 def mirror_repo(ssh_clone_url, repo_name):
+    """ Using git from the CLI clone --mirror """
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('Cloning %s', repo_name)
-    with open(logfile, 'w') as f:
+    with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
             subprocess.run(f'git clone --mirror {ssh_clone_url}',
                            shell=True,
                            stdin=DEVNULL,
-                           stdout=f,
+                           stdout=log_file_handle,
                            stderr=subprocess.STDOUT,
                            check=True,
                            timeout=PROCESS_TIMEOUT)
-        except subprocess.CalledProcessError:
-            logging.error(
-                'Error cloning %s, see %s for details', repo_name, logfile)
+        except subprocess.CalledProcessError as cpe:
+            logging.exception(cpe)  # log the exception but don't block other threads
+            logging.error('Error cloning %s, see %s for details', repo_name, logfile)
             return False
         except subprocess.TimeoutExpired:
-            logging.error(
-                'Timeout updating %s, see %s for details', repo_name, logfile)
+            logging.error('Timeout updating %s, see %s for details', repo_name, logfile)
             return False
     return True
 
