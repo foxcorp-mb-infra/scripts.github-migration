@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-This script mirror (i.e. clone repo with entire history) all of the Bitbucket repos mentioned in the given text file
-and mirror them in the destination directory.
+This script will mirror (i.e. clone repo with entire history) all of the Bitbucket 
+repos mentioned in the given text file and mirror them in the destination directory.
 It requires a bearer token in environment variable : BB_TOKEN.
 """
 
 import argparse
-import os
-import sys
 import logging
-import threading
-import subprocess
-import time
+import os
 import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
 
 from subprocess import DEVNULL
 
@@ -31,20 +32,31 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         '--repo-list',
-        help='Path of the text file which shall contain complete ssh clone url of each '
-        'Bitbucket repos to be migrated to Github, format of the file shall be one repo clone url per line',
+        help='Path of the text file which shall contain complete ssh clone '
+        'url of each Bitbucket repos to be migrated to Github, format of the '
+        'file shall be one repo clone url per line',
     )
     parser.add_argument('--dest', help='Destination directory to mirror repos')
 
     args = parser.parse_args()
+    if not args.repo_list or not args.dest:
+        logging.critical("missing required arguments")
+        parser.print_help()
+        sys.exit()
+
+    if not os.path.exists(args.dest):
+        logging.error("Destination directory does not exist: %s", args.dest)
+        sys.exit(-1)
+
+    if not os.path.exists(args.repo_list):
+        logging.error("can't find repo list %s", args.repo_list)
+        sys.exit(-1)
 
     # check if BB_TOKEN is set as environment variable
     bb_token = os.getenv('BB_TOKEN')
     if bb_token is None:
         logging.error('BB_TOKEN environment variable not found')
         sys.exit(-1)
-
-    os.chdir(args.dest)
 
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
@@ -53,11 +65,14 @@ def main():
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
 
+    working_dir = os.path.abspath(os.path.expanduser(args.dest))
+    repo_list = os.path.abspath(os.path.expanduser(args.repo_list))
+
     # start a thread per repo
     threads = []
-    with open(args.repo_list, encoding="UTF-8") as repo_list_file_handle:
+    with open(repo_list, encoding="UTF-8") as repo_list_file_handle:
         while (repo := repo_list_file_handle.readline().rstrip()):
-            threads.append(threading.Thread(target=process_repo, args=(repo, )))
+            threads.append(threading.Thread(target=process_repo, args=(repo, working_dir)))
 
         for worker in threads:
             worker.daemon = True  # helps to cancel cleanly
@@ -66,9 +81,9 @@ def main():
             worker.join(timeout=PROCESS_TIMEOUT)
 
 
-def process_repo(ssh_clone_url):
+def process_repo(ssh_clone_url, working_dir):
     """ The main worker logic to exec the update and mirror logic and retry on error """
-    repo_name = ssh_clone_url[6:-4].split('/')[-1]
+    repo_name = convert_ssh_path_to_repo_name(ssh_clone_url)
     logfile = os.path.join(LOGGING_DIR, repo_name)
     duration = 5
     tries = 0
@@ -76,10 +91,11 @@ def process_repo(ssh_clone_url):
     with concurrency_sem:
         while tries <= 3:
             # if the diretory exists, update the repo
-            if os.path.isdir(repo_name):
-                done = update_repo(repo_name)
+            repo_dir = os.path.join(working_dir, repo_name)
+            if os.path.isdir(repo_dir):
+                done = update_repo(repo_name, repo_dir)
             else:  # otherwise clone into the directory
-                done = mirror_repo(ssh_clone_url, repo_name)
+                done = mirror_repo(ssh_clone_url, repo_name, working_dir)
             if done:
                 break
             # backoff and try again
@@ -93,14 +109,14 @@ def process_repo(ssh_clone_url):
     return
 
 
-def update_repo(repo_name):
+def update_repo(repo_name, repo_dir):
     """ Using git from the CLI do a remote update """
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('Updating %s', repo_name)
     with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
             subprocess.run('git remote update',
-                           cwd=repo_name,
+                           cwd=repo_dir,
                            shell=True,
                            stdin=DEVNULL,
                            stdout=log_file_handle,
@@ -117,13 +133,14 @@ def update_repo(repo_name):
     return True
 
 
-def mirror_repo(ssh_clone_url, repo_name):
+def mirror_repo(ssh_clone_url, repo_name, working_dir):
     """ Using git from the CLI clone --mirror """
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('Cloning %s', repo_name)
     with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
-            subprocess.run(f'git clone --mirror {ssh_clone_url}',
+            subprocess.run(f'git clone --mirror {ssh_clone_url} {repo_name}',
+                           cwd=working_dir,
                            shell=True,
                            stdin=DEVNULL,
                            stdout=log_file_handle,
@@ -138,6 +155,14 @@ def mirror_repo(ssh_clone_url, repo_name):
             logging.error('Timeout updating %s, see %s for details', repo_name, logfile)
             return False
     return True
+
+
+def convert_ssh_path_to_repo_name(ssh_path):
+    """ strip off the tail `.git` and return the repository base name """
+    parts = urllib.parse.urlparse(ssh_path)
+    ssh_path_no_ext, _ = os.path.splitext(parts.path)
+    repo_name = os.path.basename(ssh_path_no_ext)
+    return repo_name
 
 
 if __name__ == '__main__':
