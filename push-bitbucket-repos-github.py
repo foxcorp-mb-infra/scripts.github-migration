@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-This script will push Bitbucket mirrored repos from provided directory into the 
-Github repository that has the same name.  It requires a bearer token in 
-environment variable GITHUB_TOKEN.  User running this script be have Owner 
+This script will push Bitbucket mirrored repos from the provided directory into the
+Github repository that has the same name.  It requires a bearer token in
+environment variable GITHUB_TOKEN.  User running this script must have Owner
 access to the GitHub Organization
 """
 
@@ -15,6 +15,7 @@ import time
 import subprocess
 import shutil
 
+from pathlib import Path
 from subprocess import DEVNULL
 
 LOG_LEVEL = logging.INFO
@@ -33,15 +34,10 @@ def main():
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--org-name', help='Name of the Github Organization')
-    parser.add_argument('--mirrored-repos-path', help='Path of the mirrored repo')
+    parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
+    parser.add_argument('--mirrored-repos-path', type=Path, required=True, help='Path of the mirrored repo')
 
     args = parser.parse_args()
-
-    if not args.org_name or not args.mirrored_repos_path:
-        logging.critical("missing required arguments")
-        parser.print_help()
-        sys.exit()
 
     # check if GITHUB_TOKEN is set as environment variable
     github_token = os.getenv('GITHUB_TOKEN')
@@ -81,7 +77,7 @@ def main():
 
 def process_repo(repo_name, mirrored_repos_path, org_name):
     """ The main work process will attempt to push to Github and retry on failure """
-    logfile = os.path.join(LOGGING_DIR, repo_name)
+    logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
     duration = 5
     tries = 0
     done = False

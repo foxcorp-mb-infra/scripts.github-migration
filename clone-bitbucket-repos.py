@@ -15,6 +15,7 @@ import threading
 import time
 import urllib.parse
 
+from pathlib import Path
 from subprocess import DEVNULL
 
 LOG_LEVEL = logging.INFO
@@ -32,21 +33,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         '--repo-list',
+        type=Path,
+        required=True,
         help='Path of the text file which shall contain complete ssh clone '
         'url of each Bitbucket repos to be migrated to Github, format of the '
         'file shall be one repo clone url per line',
     )
-    parser.add_argument('--dest', help='Destination directory to mirror repos')
+    parser.add_argument('--dest', type=Path, required=True, help='Destination directory to mirror repos')
 
     args = parser.parse_args()
-    if not args.repo_list or not args.dest:
-        logging.critical("missing required arguments")
-        parser.print_help()
-        sys.exit()
-
-    if not os.path.exists(args.dest):
-        logging.error("Destination directory does not exist: %s", args.dest)
-        sys.exit(-1)
+    working_dir = os.path.abspath(os.path.expanduser(args.dest))
+    if not os.path.exists(working_dir):
+        logging.warning("Destination directory does not exist: %s", working_dir)
+        logging.info("making destination directory")
+        os.makedirs(working_dir)
 
     if not os.path.exists(args.repo_list):
         logging.error("can't find repo list %s", args.repo_list)
@@ -58,6 +58,7 @@ def main():
         logging.error('BB_TOKEN environment variable not found')
         sys.exit(-1)
 
+    os.chdir(working_dir)
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
         shutil.rmtree(LOGGING_DIR)
@@ -65,15 +66,14 @@ def main():
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
 
-    working_dir = os.path.abspath(os.path.expanduser(args.dest))
-    repo_list = os.path.abspath(os.path.expanduser(args.repo_list))
+    repo_list_file_path = os.path.abspath(os.path.expanduser(args.repo_list))
 
     # start a thread per repo
     threads = []
-    with open(repo_list, encoding="UTF-8") as repo_list_file_handle:
-        while (repo := repo_list_file_handle.readline().rstrip()):
-            threads.append(threading.Thread(target=process_repo, args=(repo, working_dir)))
-
+    with open(repo_list_file_path, encoding="UTF-8") as repo_list_file_handle:
+        for clone_url in repo_list_file_handle:
+            worker = threading.Thread(target=process_repo, args=(clone_url.strip(), working_dir))
+            threads.append(worker)
         for worker in threads:
             worker.daemon = True  # helps to cancel cleanly
             worker.start()
@@ -84,7 +84,7 @@ def main():
 def process_repo(ssh_clone_url, working_dir):
     """ The main worker logic to exec the update and mirror logic and retry on error """
     repo_name = convert_ssh_path_to_repo_name(ssh_clone_url)
-    logfile = os.path.join(LOGGING_DIR, repo_name)
+    logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
     duration = 5
     tries = 0
     done = False

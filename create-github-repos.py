@@ -2,7 +2,7 @@
 """
 This script creates empty repositories in the Github organization provided.
 It requires a bearer token in environment variable GITHUB_TOKEN.
-User running this script be have Owner access to the GitHub Organization
+User running this script must have Owner access to the GitHub Organization
 """
 
 import argparse
@@ -12,6 +12,8 @@ import os
 import shutil
 import sys
 import urllib.parse
+
+from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -26,23 +28,15 @@ def main():
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--org-name', help='Name of the Github Organization')
-    parser.add_argument('--mirrored-repos-path', help='Directory path to the cloned/mirrored repositories')
+    parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
+    parser.add_argument(
+        '--mirrored-repos-path',
+        type=Path,
+        required=True,
+        help='Directory path to the cloned/mirrored repositories',
+    )
 
     args = parser.parse_args()
-
-    if not args.org_name or not args.mirrored_repos_path:
-        logging.critical("missing required arguments")
-        parser.print_help()
-        sys.exit()
-
-    # recreate logging dir for every run
-    if os.path.isdir(LOGGING_DIR):
-        shutil.rmtree(LOGGING_DIR)
-
-    if not os.path.isdir(LOGGING_DIR):
-        os.makedirs(LOGGING_DIR)
-
     # check if GITHUB_TOKEN is set as environment variable
     github_token = os.getenv('GITHUB_TOKEN')
     if github_token is None:
@@ -51,6 +45,13 @@ def main():
 
     mirrored_repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
     os.chdir(mirrored_repos_path)
+
+    # recreate logging dir for every run
+    if os.path.isdir(LOGGING_DIR):
+        shutil.rmtree(LOGGING_DIR)
+
+    if not os.path.isdir(LOGGING_DIR):
+        os.makedirs(LOGGING_DIR)
 
     allrepos = os.listdir(mirrored_repos_path)
     for repo_name in allrepos:
@@ -84,13 +85,15 @@ def create_github_repository(repo_name, org_name, github_token):
     response = session.post(url, headers=headers_json, data=json.dumps(payload))
 
     if response.status_code != 201:
+        response_data = json.loads(response.text)
+        errors = response_data.get('errors', [])
+        error_message = ','.join([error["message"] for error in errors])
         logging.error(
-            'Failed to create repository %s . status_code: %d . response_text: %s',
-            repo_name,
+            '%d %s: %s',
             response.status_code,
-            response.text,
+            repo_name,
+            error_message,
         )
-        raise SystemExit()
     else:
         logging.info('Repository %s created successfully', repo_name)
 
