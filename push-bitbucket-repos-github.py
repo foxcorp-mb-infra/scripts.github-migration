@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-This script will push Bitbucket mirrored repos from source folder to github
-It requires a bearer token in environment variable GITHUB_TOKEN.
-User running this script be have Owner access to the GitHub Organization
+This script will push Bitbucket mirrored repos from the provided directory into the
+Github repository that has the same name.  It requires a bearer token in
+environment variable GITHUB_TOKEN.  User running this script must have Owner
+access to the GitHub Organization
 """
 
 import argparse
@@ -14,6 +15,7 @@ import time
 import subprocess
 import shutil
 
+from pathlib import Path
 from subprocess import DEVNULL
 
 LOG_LEVEL = logging.INFO
@@ -31,9 +33,9 @@ def main():
     """
     logging.basicConfig(level=LOG_LEVEL)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--org-name', help='Name of the Github Organization')
-    parser.add_argument('--mirrored-repos-path', help='Path of the mirrored repo')
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
+    parser.add_argument('--mirrored-repos-path', type=Path, required=True, help='Path of the mirrored repo')
 
     args = parser.parse_args()
 
@@ -43,7 +45,8 @@ def main():
         logging.error('GITHUB_TOKEN environment variable not found')
         sys.exit(-1)
 
-    os.chdir(args.mirrored_repos_path)
+    mirrored_repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
+    os.chdir(mirrored_repos_path)
 
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
@@ -56,12 +59,12 @@ def main():
     threads = []
 
     allrepos = os.listdir(args.mirrored_repos_path)
-    for repo in allrepos:
-        if repo.startswith("."):
+    for repo_name in allrepos:
+        if repo_name.startswith("."):
             continue
         worker = threading.Thread(
             target=process_repo,
-            args=(repo, args.mirrored_repos_path, args.org_name),
+            args=(repo_name, args.mirrored_repos_path, args.org_name),
         )
         threads.append(worker)
 
@@ -72,16 +75,15 @@ def main():
         worker.join(timeout=PROCESS_TIMEOUT)
 
 
-def process_repo(repo, mirrored_repos_path, org_name):
+def process_repo(repo_name, mirrored_repos_path, org_name):
     """ The main work process will attempt to push to Github and retry on failure """
-    repo_name = repo[:-4]
-    logfile = os.path.join(LOGGING_DIR, repo_name)
+    logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
     duration = 5
     tries = 0
     done = False
     with concurrency_sem:
         while tries <= 3:
-            done = push_repo_github(repo, mirrored_repos_path, org_name)
+            done = push_repo_github(repo_name, mirrored_repos_path, org_name)
             if done:
                 break
             tries += 1
@@ -94,14 +96,13 @@ def process_repo(repo, mirrored_repos_path, org_name):
     return
 
 
-def push_repo_github(repo, mirrored_repos_path, org_name):
+def push_repo_github(repo_name, mirrored_repos_path, org_name):
     """ Using the git command from the CLI set the remote, push to origin, and push --mirror """
-    repo_name = repo[:-4]
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('pushing %s to Github organization: %s', repo_name, org_name)
 
-    git_ref = f"{DEFAULT_GH_URL}/{org_name}/{repo}"
-    working_dir = os.path.join(mirrored_repos_path, repo)
+    git_ref = f"{DEFAULT_GH_URL}/{org_name}/{repo_name}"
+    working_dir = os.path.join(mirrored_repos_path, repo_name)
     with open(logfile, 'w', encoding='UTF-8') as log_file_handle:
         try:
             subprocess.run(

@@ -1,32 +1,50 @@
 #!/usr/bin/env python3
 """
-This script creates empty GH repos in the gitHub organization mentioned in the argument.
+This script creates empty repositories in the Github organization provided.
 It requires a bearer token in environment variable GITHUB_TOKEN.
-User running this script be have Owner access to the GitHub Organization
+User running this script must have Owner access to the GitHub Organization
 """
 
 import argparse
-import os
-import sys
-import logging
 import json
+import logging
+import os
 import shutil
+import sys
+import urllib.parse
+
+from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 LOG_LEVEL = logging.INFO
 LOGGING_DIR = '.create-repos-github'
+GITHUB_API_URL = 'https://api.github.com/orgs'
 
 
 def main():
     """ CLI entry point for create-github-repos"""
     logging.basicConfig(level=LOG_LEVEL)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--org-name', help='Name of the Github Organization')
-    parser.add_argument('--mirrored-repos-path', help='Path of the mirrored repo')
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
+    parser.add_argument(
+        '--mirrored-repos-path',
+        type=Path,
+        required=True,
+        help='Directory path to the cloned/mirrored repositories',
+    )
 
     args = parser.parse_args()
+    # check if GITHUB_TOKEN is set as environment variable
+    github_token = os.getenv('GITHUB_TOKEN')
+    if github_token is None:
+        logging.error('GITHUB_TOKEN environment variable not found')
+        sys.exit(-1)
+
+    mirrored_repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
+    os.chdir(mirrored_repos_path)
 
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
@@ -35,26 +53,18 @@ def main():
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
 
-    # check if GITHUB_TOKEN is set as environment variable
-    github_token = os.getenv('GITHUB_TOKEN')
-    if github_token is None:
-        logging.error('GITHUB_TOKEN environment variable not found')
-        sys.exit(-1)
-
-    os.chdir(args.mirrored_repos_path)
-
-    allrepos = os.listdir(args.mirrored_repos_path)
-    for repo in allrepos:
-        if repo.startswith("."):
+    allrepos = os.listdir(mirrored_repos_path)
+    for repo_name in allrepos:
+        if repo_name.startswith("."):
+            # skip any hidden directories like .mirror-project/
             continue
-        repo_name = repo[:-4]
         create_github_repository(repo_name, args.org_name, github_token)
 
 
 def create_github_repository(repo_name, org_name, github_token):
     """ use the Github API to create a new repository in the organization """
 
-    url = f'https://api.github.com/orgs/{org_name}/repos'
+    url = f'{GITHUB_API_URL}/{org_name}/repos'
     headers_json = {"Accept": "application/vnd.github.v3+json", "Authorization": f"token {github_token}"}
 
     payload = {
@@ -67,16 +77,23 @@ def create_github_repository(repo_name, org_name, github_token):
         "has_wiki": True,
     }
 
-    response = requests.post(url, headers=headers_json, data=json.dumps(payload))
+    session = requests.Session()
+    retries = Retry(total=5, backoff_factor=0.25, status_forcelist=[500, 502, 503, 504])
+    prefix = f"{urllib.parse.urlsplit(url).scheme}://"
+
+    session.mount(prefix, HTTPAdapter(max_retries=retries))
+    response = session.post(url, headers=headers_json, data=json.dumps(payload))
 
     if response.status_code != 201:
+        response_data = json.loads(response.text)
+        errors = response_data.get('errors', [])
+        error_message = ','.join([error["message"] for error in errors])
         logging.error(
-            'Failed to create repository %s . status_code: %d . response_text: %s',
-            repo_name,
+            '%d %s: %s',
             response.status_code,
-            response.text,
+            repo_name,
+            error_message,
         )
-        raise SystemExit()
     else:
         logging.info('Repository %s created successfully', repo_name)
 
