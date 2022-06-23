@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-This script will mirror (i.e. clone repo with entire history) all of the Bitbucket 
-repos mentioned in the given text file and mirror them in the destination directory.
+This script will clone (i.e. clone repo with entire history) all of the Bitbucket 
+repos mentioned in the given text file and clone them in the destination directory.
 It requires a bearer token in environment variable : BB_TOKEN.
 """
 
@@ -20,7 +20,7 @@ from subprocess import DEVNULL
 
 LOG_LEVEL = logging.INFO
 DEFAULT_NUM_THREADS = 4
-LOGGING_DIR = '.mirror-project'
+LOGGING_DIR = '.clone-project'
 PROCESS_TIMEOUT = 300  # default process timeout
 
 concurrency_sem = threading.Semaphore(DEFAULT_NUM_THREADS)
@@ -39,7 +39,7 @@ def main():
         'url of each Bitbucket repos to be migrated to Github, format of the '
         'file shall be one repo clone url per line',
     )
-    parser.add_argument('--dest', type=Path, required=True, help='Destination directory to mirror repos')
+    parser.add_argument('--dest', type=Path, required=True, help='Destination directory to clone repos')
 
     args = parser.parse_args()
     working_dir = os.path.abspath(os.path.expanduser(args.dest))
@@ -82,7 +82,7 @@ def main():
 
 
 def process_repo(ssh_clone_url, working_dir):
-    """ The main worker logic to exec the update and mirror logic and retry on error """
+    """ The main worker logic to exec the update and clone logic and retry on error """
     repo_name = convert_ssh_path_to_repo_name(ssh_clone_url)
     logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
     duration = 5
@@ -95,7 +95,7 @@ def process_repo(ssh_clone_url, working_dir):
             if os.path.isdir(repo_dir):
                 done = update_repo(repo_name, repo_dir)
             else:  # otherwise clone into the directory
-                done = mirror_repo(ssh_clone_url, repo_name, working_dir)
+                done = clone_repo(ssh_clone_url, repo_name, working_dir)
             if done:
                 break
             # backoff and try again
@@ -133,13 +133,13 @@ def update_repo(repo_name, repo_dir):
     return True
 
 
-def mirror_repo(ssh_clone_url, repo_name, working_dir):
-    """ Using git from the CLI clone --mirror """
+def clone_repo(ssh_clone_url, repo_name, working_dir):
+    """ Using git from the CLI clone  """
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('Cloning %s', repo_name)
     with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
-            subprocess.run(f'git clone --mirror {ssh_clone_url} {repo_name}',
+            subprocess.run(f'git clone {ssh_clone_url} {repo_name}',
                            cwd=working_dir,
                            shell=True,
                            stdin=DEVNULL,
