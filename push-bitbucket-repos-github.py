@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-This script will push Bitbucket mirrored repos from the provided directory into the
+This script will push Bitbucket cloned repos from the provided directory into the
 Github repository that has the same name.  It requires a bearer token in
 environment variable GITHUB_TOKEN.  User running this script must have Owner
 access to the GitHub Organization
@@ -29,13 +29,13 @@ concurrency_sem = threading.Semaphore(DEFAULT_NUM_THREADS)
 
 def main():
     """ The main entry point for the script. Required args for Github organization
-        name and the local path to the mirrored repositories to push
+        name and the local path to the cloned repositories to push
     """
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
-    parser.add_argument('--mirrored-repos-path', type=Path, required=True, help='Path of the mirrored repo')
+    parser.add_argument('--cloned-repos-path', type=Path, required=True, help='Path of the cloned repo')
 
     args = parser.parse_args()
 
@@ -45,8 +45,8 @@ def main():
         logging.error('GITHUB_TOKEN environment variable not found')
         sys.exit(-1)
 
-    mirrored_repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
-    os.chdir(mirrored_repos_path)
+    cloned_repos_path = os.path.abspath(os.path.expanduser(args.cloned_repos_path))
+    os.chdir(cloned_repos_path)
 
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
@@ -58,13 +58,13 @@ def main():
     # start a thread per repo
     threads = []
 
-    allrepos = os.listdir(args.mirrored_repos_path)
+    allrepos = os.listdir(args.cloned_repos_path)
     for repo_name in allrepos:
         if repo_name.startswith("."):
             continue
         worker = threading.Thread(
             target=process_repo,
-            args=(repo_name, args.mirrored_repos_path, args.org_name),
+            args=(repo_name, args.cloned_repos_path, args.org_name),
         )
         threads.append(worker)
 
@@ -75,7 +75,7 @@ def main():
         worker.join(timeout=PROCESS_TIMEOUT)
 
 
-def process_repo(repo_name, mirrored_repos_path, org_name):
+def process_repo(repo_name, cloned_repos_path, org_name):
     """ The main work process will attempt to push to Github and retry on failure """
     logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
     duration = 5
@@ -83,7 +83,7 @@ def process_repo(repo_name, mirrored_repos_path, org_name):
     done = False
     with concurrency_sem:
         while tries <= 3:
-            done = push_repo_github(repo_name, mirrored_repos_path, org_name)
+            done = push_repo_github(repo_name, cloned_repos_path, org_name)
             if done:
                 break
             tries += 1
@@ -96,17 +96,18 @@ def process_repo(repo_name, mirrored_repos_path, org_name):
     return
 
 
-def push_repo_github(repo_name, mirrored_repos_path, org_name):
-    """ Using the git command from the CLI set the remote, push to origin, and push --mirror """
+def push_repo_github(repo_name, cloned_repos_path, org_name):
+    """ Using the git command from the CLI set the remote, push to origin """
     logfile = os.path.join(LOGGING_DIR, repo_name)
     logging.info('pushing %s to Github organization: %s', repo_name, org_name)
 
-    git_ref = f"{DEFAULT_GH_URL}/{org_name}/{repo_name}"
-    working_dir = os.path.join(mirrored_repos_path, repo_name)
+    git_ref = f"{DEFAULT_GH_URL}{org_name}/{repo_name}.git"
+    working_dir = os.path.join(cloned_repos_path, repo_name)
+
     with open(logfile, 'w', encoding='UTF-8') as log_file_handle:
         try:
             subprocess.run(
-                f'git remote set-url --push origin {git_ref} && git push --mirror',
+                f'git push {git_ref} +refs/remotes/origin/\*:refs/heads/\* && git push {git_ref} --tags',
                 cwd=working_dir,
                 shell=True,
                 stdin=DEVNULL,
