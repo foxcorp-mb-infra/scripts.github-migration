@@ -30,10 +30,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
     parser.add_argument(
-        '--mirrored-repos-path',
+        '--cloned_repos_path',
         type=Path,
         required=True,
-        help='Directory path to the cloned/mirrored repositories',
+        help='Directory path to the cloned repositories',
     )
 
     args = parser.parse_args()
@@ -43,8 +43,8 @@ def main():
         logging.error('GITHUB_TOKEN environment variable not found')
         sys.exit(-1)
 
-    mirrored_repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
-    os.chdir(mirrored_repos_path)
+    cloned_repos_path = os.path.abspath(os.path.expanduser(args.cloned_repos_path))
+    os.chdir(cloned_repos_path)
 
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
@@ -53,10 +53,10 @@ def main():
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
 
-    allrepos = os.listdir(mirrored_repos_path)
+    allrepos = os.listdir(cloned_repos_path)
     for repo_name in allrepos:
         if repo_name.startswith("."):
-            # skip any hidden directories like .mirror-project/
+            # skip any hidden directories like .clone-project/
             continue
         create_github_repository(repo_name, args.org_name, github_token)
 
