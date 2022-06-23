@@ -33,7 +33,7 @@ def main():
         '--cloned_repos_path',
         type=Path,
         required=True,
-        help='Directory path to the cloned/cloned repositories',
+        help='Directory path to the cloned repositories',
     )
 
     args = parser.parse_args()
