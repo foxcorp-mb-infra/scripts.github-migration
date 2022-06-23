@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Checks repos in the mirrored-repo-path for large objects
+Checks repos in the cloned-repo-path for large objects
 """
 
 import argparse
@@ -78,12 +78,12 @@ def main():
     logging.basicConfig(level=LOG_LEVEL)
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mirrored-repos-path', help='Path of the mirrored repo', required=True)
+    parser.add_argument('--cloned-repos-path', help='Path of the cloned repo', required=True)
 
     args = parser.parse_args()
 
     # sanity checking
-    repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
+    repos_path = os.path.abspath(os.path.expanduser(args.cloned_repos_path))
     if not os.path.isdir(repos_path):
         logging.critical(f'Could not find directory {repos_path}')
         sys.exit(-1)

@@ -2,7 +2,7 @@
 """
 This script deletes repositories from the Github organization provided. It will
 delete the repositories based on those that are currently cloned in the
-mirrored-repos-path directory.  It requires a bearer token in environment
+cloned-repos-path directory.  It requires a bearer token in environment
 variable GITHUB_TOKEN. User running this script must have Owner access to the
 Github Organization.
 """
@@ -30,7 +30,7 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
-    parser.add_argument('--mirrored-repos-path', type=Path, required=True, help='Path of the mirrored repo')
+    parser.add_argument('--cloned-repos-path', type=Path, required=True, help='Path of the cloned repo')
 
     args = parser.parse_args()
 
@@ -40,8 +40,8 @@ def main():
         logging.error('GITHUB_TOKEN environment variable not found')
         sys.exit(-1)
 
-    mirrored_repos_path = os.path.abspath(os.path.expanduser(args.mirrored_repos_path))
-    os.chdir(args.mirrored_repos_path)
+    cloned_repos_path = os.path.abspath(os.path.expanduser(args.cloned_repos_path))
+    os.chdir(args.cloned_repos_path)
 
     # recreate logging dir for every run
     if os.path.isdir(LOGGING_DIR):
@@ -50,7 +50,7 @@ def main():
     if not os.path.isdir(LOGGING_DIR):
         os.makedirs(LOGGING_DIR)
 
-    allrepos = os.listdir(mirrored_repos_path)
+    allrepos = os.listdir(cloned_repos_path)
     for repo_name in allrepos:
         if repo_name.startswith("."):
             continue
