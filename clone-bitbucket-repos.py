@@ -39,10 +39,10 @@ def main():
         'url of each Bitbucket repos to be migrated to Github, format of the '
         'file shall be one repo clone url per line',
     )
-    parser.add_argument('--dest', type=Path, required=True, help='Destination directory to clone repos')
+    parser.add_argument('--cloned-repos-path', type=Path, required=True, help='Destination directory to clone repos')
 
     args = parser.parse_args()
-    working_dir = os.path.abspath(os.path.expanduser(args.dest))
+    working_dir = os.path.abspath(os.path.expanduser(args.cloned_repos_path))
     if not os.path.exists(working_dir):
         logging.warning("Destination directory does not exist: %s", working_dir)
         logging.info("making destination directory")
