@@ -30,7 +30,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--org-name', type=str, required=True, help='Name of the Github Organization')
     parser.add_argument(
-        '--cloned_repos_path',
+        '--cloned-repos-path',
         type=Path,
         required=True,
         help='Directory path to the cloned repositories',
