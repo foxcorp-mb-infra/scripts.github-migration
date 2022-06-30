@@ -94,6 +94,8 @@ def main():
     futures = {}
     with concurrent.futures.ProcessPoolExecutor() as pool:
         for repo_name in repo_names:
+            if repo_name.startswith("."):
+                continue
             repo_dir = os.path.join(repos_path, repo_name)
             futures[pool.submit(process_repo, repo_dir)] = repo_name
 
