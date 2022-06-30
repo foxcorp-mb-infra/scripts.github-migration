@@ -46,14 +46,14 @@ def main():
         sys.exit(-1)
 
     cloned_repos_path = os.path.abspath(os.path.expanduser(args.cloned_repos_path))
-    os.chdir(cloned_repos_path)
 
     # recreate logging dir for every run
-    if os.path.isdir(LOGGING_DIR):
-        shutil.rmtree(LOGGING_DIR)
+    logging_dir = os.path.join(cloned_repos_path, LOGGING_DIR)
+    if os.path.isdir(logging_dir):
+        shutil.rmtree(logging_dir)
 
-    if not os.path.isdir(LOGGING_DIR):
-        os.makedirs(LOGGING_DIR)
+    if not os.path.isdir(logging_dir):
+        os.makedirs(logging_dir)
 
     # start a thread per repo
     threads = []
@@ -77,7 +77,7 @@ def main():
 
 def process_repo(repo_name, cloned_repos_path, org_name):
     """ The main work process will attempt to push to Github and retry on failure """
-    logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
+    logfile = os.path.abspath(os.path.join(cloned_repos_path, LOGGING_DIR, repo_name))
     duration = 5
     tries = 0
     done = False
@@ -98,7 +98,7 @@ def process_repo(repo_name, cloned_repos_path, org_name):
 
 def push_repo_github(repo_name, cloned_repos_path, org_name):
     """ Using the git command from the CLI set the remote, push to origin """
-    logfile = os.path.join(LOGGING_DIR, repo_name)
+    logfile = os.path.join(cloned_repos_path, LOGGING_DIR, repo_name)
     logging.info('pushing %s to Github organization: %s', repo_name, org_name)
 
     git_ref = f"{DEFAULT_GH_URL}{org_name}/{repo_name}.git"
