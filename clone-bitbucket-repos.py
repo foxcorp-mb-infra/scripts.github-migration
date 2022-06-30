@@ -58,13 +58,13 @@ def main():
         logging.error('BB_TOKEN environment variable not found')
         sys.exit(-1)
 
-    os.chdir(working_dir)
+    logging_dir = os.path.join(working_dir, LOGGING_DIR)
     # recreate logging dir for every run
-    if os.path.isdir(LOGGING_DIR):
-        shutil.rmtree(LOGGING_DIR)
+    if os.path.isdir(logging_dir):
+        shutil.rmtree(logging_dir)
 
-    if not os.path.isdir(LOGGING_DIR):
-        os.makedirs(LOGGING_DIR)
+    if not os.path.isdir(logging_dir):
+        os.makedirs(logging_dir)
 
     repo_list_file_path = os.path.abspath(os.path.expanduser(args.repo_list))
 
@@ -84,7 +84,7 @@ def main():
 def process_repo(ssh_clone_url, working_dir):
     """ The main worker logic to exec the update and clone logic and retry on error """
     repo_name = convert_ssh_path_to_repo_name(ssh_clone_url)
-    logfile = os.path.abspath(os.path.join(LOGGING_DIR, repo_name))
+    logfile = os.path.abspath(os.path.join(working_dir, LOGGING_DIR, repo_name))
     duration = 5
     tries = 0
     done = False
@@ -93,7 +93,7 @@ def process_repo(ssh_clone_url, working_dir):
             # if the diretory exists, update the repo
             repo_dir = os.path.join(working_dir, repo_name)
             if os.path.isdir(repo_dir):
-                done = update_repo(repo_name, repo_dir)
+                done = update_repo(repo_name, repo_dir, working_dir)
             else:  # otherwise clone into the directory
                 done = clone_repo(ssh_clone_url, repo_name, working_dir)
             if done:
@@ -109,15 +109,14 @@ def process_repo(ssh_clone_url, working_dir):
     return
 
 
-def update_repo(repo_name, repo_dir):
+def update_repo(repo_name, repo_dir, working_dir):
     """ Using git from the CLI do a remote update """
-    logfile = os.path.join(LOGGING_DIR, repo_name)
+    logfile = os.path.join(working_dir, LOGGING_DIR, repo_name)
     logging.info('Updating %s', repo_name)
     with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
-            subprocess.run('git remote update',
+            subprocess.run(['git', 'remote', 'update'],
                            cwd=repo_dir,
-                           shell=True,
                            stdin=DEVNULL,
                            stdout=log_file_handle,
                            stderr=subprocess.STDOUT,
@@ -135,13 +134,12 @@ def update_repo(repo_name, repo_dir):
 
 def clone_repo(ssh_clone_url, repo_name, working_dir):
     """ Using git from the CLI clone  """
-    logfile = os.path.join(LOGGING_DIR, repo_name)
+    logfile = os.path.join(working_dir, LOGGING_DIR, repo_name)
     logging.info('Cloning %s', repo_name)
     with open(logfile, 'w', encoding="UTF-8") as log_file_handle:
         try:
-            subprocess.run(f'git clone {ssh_clone_url} {repo_name}',
+            subprocess.run(['git', 'clone', ssh_clone_url, repo_name],
                            cwd=working_dir,
-                           shell=True,
                            stdin=DEVNULL,
                            stdout=log_file_handle,
                            stderr=subprocess.STDOUT,
